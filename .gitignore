@@ -1,0 +1,49 @@
+# Binários compilados
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binários
+*.test
+
+# Output do go build
+/bin/
+/pkg/
+
+# Arquivos de cobertura
+coverage.out
+coverage.html
+
+# Profiling
+*.prof
+*.pprof
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Variáveis de ambiente
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# Temporários
+tmp/
+temp/
+*.tmp
+
+# Distribuição
+dist/
+release/
