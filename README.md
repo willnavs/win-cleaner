@@ -41,8 +41,59 @@ win-cleaner [opções]
 | `--kill` | | Encerra processos de navegadores (Chrome, Edge, Firefox, Brave, Vivaldi, Opera) e OneDrive **antes** de limpar. Padrão: `false` (apenas pula arquivos em uso) |
 | `--extras` | | Inclui caches pesados modernos: **Discord** (Cache/Code Cache), **Steam** (htmlcache), **Opera/Opera GX**, **DirectX Shader Cache** |
 | `--yes` / `-y` | `-y` | Executa direto sem pedir confirmação interativa no início |
+| `--interactive` | | Força o assistente interativo (mesmo fluxo do duplo clique) |
 | `--version` | | Mostra versão e sai |
 | `--help` | | Mostra ajuda e sai |
+
+### Modo interativo (duplo clique)
+
+Ao abrir o `win-cleaner.exe` com **duplo clique** (sem argumentos), o programa detecta
+que o console foi criado exclusivamente para ele e inicia um assistente:
+
+```
+win-cleaner v1.0.0
+Limpeza segura de temporários, caches e logs do Windows
+──────────────────────────────────────────────────────────────
+
+⚠ AVISO: Executando sem privilégios de Administrador.
+   ...
+Reiniciar como Administrador agora? [s/N]:
+
+Configuração (pressione ENTER para manter o padrão):
+  Incluir caches extras (Discord, Steam, Opera/Opera GX, DirectX)? [s/N]:
+  Encerrar navegadores e OneDrive antes da limpeza? [s/N]:
+  Apenas simular, sem apagar nada? [s/N]:
+
+Iniciar limpeza? [s/N]:
+```
+
+- Se executado como usuário comum, oferece **reiniciar elevado** via UAC (`ShellExecuteW` + verbo `runas`).
+- Ao final (relatório, erro ou cancelamento) exibe **"Pressione ENTER para sair..."**, para a janela não fechar antes da leitura.
+- ENTER em qualquer pergunta mantém a opção segura (`N`, não executar).
+
+Executado a partir de `cmd`/PowerShell/Terminal, o comportamento continua sendo o da CLI por flags.
+
+### Manifesto UAC e compatibilidade
+
+O executável embute um manifesto Windows (`cmd/cleaner/win-cleaner.manifest`):
+
+| Configuração | Valor |
+|--------------|-------|
+| `requestedExecutionLevel` | `asInvoker` (não força UAC; a elevação é oferecida no modo interativo) |
+| `supportedOS` | Windows 8.1, 10 e 11 |
+| `dpiAware` / `dpiAwareness` | `true/pm`, `permonitorv2` |
+| `longPathAware` | `true` (caminhos > 260 caracteres) |
+| `activeCodePage` | `UTF-8` (acentos e box-drawing corretos no console) |
+
+O manifesto é linked como recurso via `cmd/cleaner/rsrc_windows_amd64.syso` e
+`rsrc_windows_arm64.syso`. Para regenerá-los após editar o `.manifest`:
+
+```bash
+go install github.com/akavel/rsrc@latest
+rsrc -manifest cmd/cleaner/win-cleaner.manifest -arch amd64 -o cmd/cleaner/rsrc_windows_amd64.syso
+rsrc -manifest cmd/cleaner/win-cleaner.manifest -arch arm64 -o cmd/cleaner/rsrc_windows_arm64.syso
+```
+
 
 ### Exemplos
 
@@ -170,26 +221,36 @@ go vet ./...
 # Testes com race detector
 go test -race ./...
 
-# Build otimizado
-go build -ldflags="-s -w" -o win-cleaner.exe ./cmd/cleaner
+# Build otimizado (com versão injetada)
+go build -ldflags="-s -w -X main.version=1.0.0 -X main.commit=$(git rev-parse --short HEAD) -X main.date=$(date +%F)" -o win-cleaner.exe ./cmd/cleaner
 
 # Cross-compile
 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o win-cleaner_windows_amd64.exe ./cmd/cleaner
 GOOS=windows GOARCH=arm64 go build -ldflags="-s -w" -o win-cleaner_windows_arm64.exe ./cmd/cleaner
 ```
 
+> Os arquivos `.syso` (manifesto UAC embutido) estão versionados no repositório,
+> portanto não é necessário instalar o `rsrc` para compilar.
+
 ## Estrutura do projeto
 
 ```
 win-cleaner/
-├── cmd/cleaner/main.go              # Entry point CLI (flag stdlib)
+├── cmd/cleaner/
+│   ├── main.go                      # Entry point CLI + modo interativo (duplo clique)
+│   ├── win-cleaner.manifest         # Manifesto UAC/compatibilidade/DPI
+│   ├── rsrc_windows_amd64.syso      # Manifesto embutido (amd64)
+│   └── rsrc_windows_arm64.syso      # Manifesto embutido (arm64)
 ├── internal/
-│   ├── sysutil/admin_windows.go     # Verificação de Admin (Windows API)
+│   ├── sysutil/
+│   │   ├── admin_windows.go         # Verificação de Admin (Windows API)
+│   │   └── console_windows.go       # Duplo clique, elevação UAC e pausa final
 │   └── cleaner/
 │       ├── engine.go                # Motor de limpeza paralela + relatório
 │       ├── targets_windows.go       # Alvos Windows (Lixeira, Temp, Logs, Explorer)
 │       ├── targets_browsers.go      # Alvos Navegadores (auto-descoberta perfis)
-│       └── targets_apps.go          # Alvos Apps (OneDrive, Spotify, Adobe, etc.)
+│       ├── targets_apps.go          # Alvos Apps (OneDrive, Spotify, Adobe, etc.)
+│       └── util.go                  # Interface Target, glob e helpers
 ├── go.mod
 └── README.md
 ```
